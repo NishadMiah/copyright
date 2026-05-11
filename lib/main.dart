@@ -146,15 +146,43 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (_outputPath == null) return;
 
     if (Platform.isAndroid || Platform.isIOS) {
-      final status = await Permission.photos.request();
+      PermissionStatus status;
+      if (Platform.isAndroid) {
+        // Request multiple permissions for maximum compatibility
+        final statuses = await [
+          Permission.photos,
+          Permission.videos,
+          Permission.storage,
+        ].request();
+
+        status =
+            statuses[Permission.videos] ??
+            statuses[Permission.photos] ??
+            statuses[Permission.storage] ??
+            PermissionStatus.denied;
+      } else {
+        status = await Permission.photos.request();
+      }
+
       if (status.isGranted || status.isLimited) {
         final result = await GallerySaver.saveVideo(_outputPath!);
         if (!mounted) return;
         if (result == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text("Saved to Gallery!"),
-              backgroundColor: const Color(0xFF7B61FF),
+              content: const Text("Successfully saved to Gallery!"),
+              backgroundColor: const Color(0xFF00E5FF),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("Failed to save. Try using 'Share' instead."),
+              backgroundColor: Colors.redAccent,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -162,6 +190,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             ),
           );
         }
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Permission denied. Please enable gallery access."),
+          ),
+        );
       }
     }
   }
