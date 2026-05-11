@@ -78,19 +78,26 @@ class VideoService {
     final uniqueTag =
         '${DateTime.now().millisecondsSinceEpoch}_${random.nextInt(99999)}';
 
-    // Video filter chain (imperceptible changes that defeat perceptual hashing):
-    //  1. crop=iw-4:ih-4:2:2   → removes 2px from each edge (changes frame boundary)
-    //  2. pad=iw+4:ih+4:2:2    → pads back to original size with black (restores dimensions)
-    //  3. noise=c0s=2:allf=t   → ultra-subtle temporal noise (strength 2 out of 100)
-    //  4. eq=brightness=X:saturation=Y → micro color shift
-    //  5. select='not(eq(mod(n,300),0))',setpts=N/FRAME_RATE/TB → Drops 1 frame every 10s (300 frames)
-    //     This shifts the entire timeline, breaking frame-based hashes.
+    // Micro speed shift: 0.999 or 1.001 (completely unnoticeable, but shifts every frame's timestamp)
+    final speed = random.nextBool() ? 0.999 : 1.001;
+    final speedString = speed.toStringAsFixed(3);
+    final audioSpeed = (1.0 / speed).toStringAsFixed(3);
+
+    // Micro hue shift: ±0.1 degree
+    final hue = (random.nextDouble() * 0.2 - 0.1).toStringAsFixed(2);
+
+    // Video filter chain (Aggressive Fingerprint Destruction):
+    //  1. scale=iw*1.02:-1,crop=iw/1.02:ih/1.02 → 2% Subtle Zoom (removes edge fingerprints)
+    //  2. noise=c0s=3:allf=t   → subtle temporal noise
+    //  3. eq=brightness=$brightnessDelta:saturation=$saturation:contrast=1.01:gamma=1.01 → Multi-point color shift
+    //  4. hue=h=$hue           → Micro hue rotation
+    //  5. setpts=$speedString*PTS → Temporal timeline stretching
     final vf =
-        'crop=iw-4:ih-4:2:2,'
-        'pad=iw+4:ih+4:2:2:color=black,'
-        'noise=c0s=2:allf=t,'
-        'eq=brightness=$brightnessDelta:saturation=$saturation,'
-        'select=\'not(eq(mod(n,300),0))\',setpts=N/FRAME_RATE/TB';
+        'scale=iw*1.02:-1,crop=iw/1.02:ih/1.02,'
+        'noise=c0s=3:allf=t,'
+        'eq=brightness=$brightnessDelta:saturation=$saturation:contrast=1.01:gamma=1.01,'
+        'hue=h=$hue,'
+        'setpts=$speedString*PTS';
 
     String effectiveCodec = codec;
     if (Platform.isAndroid) {
@@ -111,6 +118,7 @@ class VideoService {
         '-metadata encoder="BlazeAura Video Engine" '
         '-metadata creation_time="$now" '
         '-vf "$vf" '
+        '-af "atempo=$audioSpeed" '
         '-c:v $effectiveCodec '
         '-crf $crf '
         '-preset ultrafast '
